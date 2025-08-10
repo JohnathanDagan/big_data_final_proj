@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Traffic and Weather Analysis using PySpark
-Analyzes the relationship between weather events and traffic congestion severity
+Traffic Type and Weather Analysis using PySpark
+Analyzes the relationship between different traffic types and rain conditions
 Designed to run with spark-submit for maximum performance
 """
 
@@ -107,11 +107,17 @@ def load_data(spark):
     print("High-performance data loading completed!")
     return traffic_events, weather_events
 
-def analyze_basic_distributions(traffic_events):
-    """Analyze basic distributions in traffic data"""
+def analyze_traffic_types_distribution(traffic_events):
+    """Analyze distribution of different traffic types"""
     print("\n" + "="*60)
-    print("BASIC DATA ANALYSIS")
+    print("TRAFFIC TYPES DISTRIBUTION")
     print("="*60)
+    
+    print("\nOverall Traffic Type Distribution:")
+    type_counts = traffic_events.groupBy("Type").count().orderBy(col("count").desc())
+    type_data = type_counts.collect()
+    for row in type_data:
+        print(f"  {row['Type']}: {row['count']:,} events")
     
     # Traffic severity distribution
     print("\nTraffic Severity Distribution:")
@@ -119,26 +125,15 @@ def analyze_basic_distributions(traffic_events):
     severity_data = severity_counts.collect()
     for row in severity_data:
         print(f"  Severity {row['Severity']}: {row['count']:,} events")
-    
-    # Top cities by traffic events
-    print("\nTop 10 Cities by Traffic Events:")
-    cities_counts = traffic_events.groupBy("City").count().orderBy(col("count").desc()).limit(10)
-    cities_data = cities_counts.collect()
-    for i, row in enumerate(cities_data, 1):
-        print(f"  {i:2d}. {row['City']}: {row['count']:,} events")
-    
-    # Top states by traffic events
-    print("\nTop 15 States by Traffic Events:")
-    states_counts = traffic_events.groupBy("State").count().orderBy(col("count").desc()).limit(15)
-    states_data = states_counts.collect()
-    for i, row in enumerate(states_data, 1):
-        print(f"  {i:2d}. {row['State']}: {row['count']:,} events")
 
 def prepare_weather_data(weather_events):
-    """Add numeric severity to weather data"""
-    print("\nPreparing weather data with numeric severity...")
+    """Filter weather data to only include Rain events"""
+    print("\nPreparing weather data - filtering for Rain events only...")
     
-    weather_events = weather_events.withColumn(
+    # Only keep Rain events
+    rain_events = weather_events.filter(col("Type") == "Rain")
+    
+    rain_events = rain_events.withColumn(
         "WeatherSeverityNumeric",
         when(col("Severity") == "Light", 1)
         .when(col("Severity") == "Moderate", 2)
@@ -146,7 +141,10 @@ def prepare_weather_data(weather_events):
         .otherwise(0)
     )
     
-    return weather_events
+    rain_count = rain_events.count()
+    print(f"Rain events retained: {rain_count:,}")
+    
+    return rain_events
 
 def join_traffic_and_weather_data(traffic_alias, weather_alias):
     """Join traffic and weather data based on time overlap with broadcast optimization"""
@@ -179,37 +177,34 @@ def get_city_weather_analysis(city, traffic_events, weather_events):
     print(f"    Analyzing {city}...")
     
     # Pre-filter datasets for the specific city to reduce join size
-    city_congestion = traffic_events.filter(col("City") == city) #.filter(col("Type") == "Congestion")
+    city_traffic = traffic_events.filter(col("City") == city)
     city_weather = weather_events.filter(col("City") == city)
     
     # Cache filtered datasets
-    city_congestion = city_congestion.cache()
+    city_traffic = city_traffic.cache()
     city_weather = city_weather.cache()
     
-    print(f"      {city} congestion events: {city_congestion.count():,}")
+    print(f"      {city} traffic events: {city_traffic.count():,}")
     print(f"      {city} weather events: {city_weather.count():,}")
 
-    c = city_congestion.alias("c")
+    c = city_traffic.alias("c")
     w = city_weather.alias("w")
 
     city_joined = join_traffic_and_weather_data(c, w)
     
-    # Use coalesce to optimize partitioning for aggregation
-    city_avg_severity = city_joined.coalesce(50).groupBy("WeatherType").agg(avg("Severity").alias("AvgSeverity"))
-    
-    return city_joined, city_avg_severity
+    return city_joined
 
-def analyze_cities(traffic_events, weather_events):
-    """Analyze multiple cities for weather impact on traffic with parallel processing"""
+def analyze_traffic_types_by_weather(traffic_events, weather_events):
+    """Analyze different traffic types under No Weather and Rain conditions"""
     print("\n" + "="*60)
-    print("CITY-SPECIFIC WEATHER IMPACT ANALYSIS (HIGH PERFORMANCE)")
+    print("TRAFFIC TYPE ANALYSIS BY WEATHER CONDITIONS")
     print("="*60)
     
     cities = ["Los Angeles", "San Francisco", "Dallas", "Houston", "Boston", "Chicago", "New York", "Miami", "Atlanta", "Seattle"]
+    traffic_types = ["Accident", "Broken-Vehicle", "Congestion", "Construction", "Event", "Lane-Blocked", "Flow-Incident"]
     
     # Pre-filter to only cities with significant data
-    print("Pre-filtering cities with significant congestion data...")
-    #.filter(col("Type") == "Congestion")
+    print("Pre-filtering cities with significant traffic data...")
     city_counts = traffic_events \
         .groupBy("City").count() \
         .orderBy(col("count").desc()) \
@@ -219,24 +214,67 @@ def analyze_cities(traffic_events, weather_events):
     print(f"Cities with sufficient data: {available_cities}")
     
     for city in available_cities:
-        print(f"\n{city} - Average Traffic Severity by Weather Type:")
-        print("-" * 50)
+        print(f"\n{city} - Traffic Severity by Type and Weather Condition:")
+        print("=" * 65)
         
         try:
-            city_joined, city_avg_severity = get_city_weather_analysis(city, traffic_events, weather_events)
+            city_joined = get_city_weather_analysis(city, traffic_events, weather_events)
             
-            # Collect results efficiently
-            severity_data = city_avg_severity.orderBy("WeatherType").collect()
-            if severity_data:
-                for row in severity_data:
-                    weather_type = row['WeatherType']
-                    avg_severity = row['AvgSeverity']
-                    if avg_severity is not None:
-                        print(f"      {weather_type}: {avg_severity:.3f}")
-                    else:
-                        print(f"      {weather_type}: No data")
-            else:
-                print(f"      No congestion data available for {city}")
+            # Filter for only No Weather Event and Rain conditions
+            filtered_data = city_joined.filter(
+                (col("WeatherType") == "No Weather Event") | (col("WeatherType") == "Rain")
+            ).cache()
+            
+            if filtered_data.count() == 0:
+                print(f"      No relevant data available for {city}")
+                continue
+            
+            print(f"{'Traffic Type':<20} {'No Weather':<15} {'Rain':<15} {'Difference':<15}")
+            print("-" * 65)
+            
+            for traffic_type in traffic_types:
+                # Get data for this traffic type
+                traffic_type_data = filtered_data.filter(col("Type") == traffic_type)
+                
+                # Calculate average severity for No Weather Event
+                no_weather_avg = traffic_type_data \
+                    .filter(col("WeatherType") == "No Weather Event") \
+                    .agg(avg("Severity").alias("AvgSeverity")) \
+                    .collect()
+                
+                # Calculate average severity for Rain
+                rain_avg = traffic_type_data \
+                    .filter(col("WeatherType") == "Rain") \
+                    .agg(avg("Severity").alias("AvgSeverity")) \
+                    .collect()
+                
+                # Get counts for context
+                no_weather_count = traffic_type_data.filter(col("WeatherType") == "No Weather Event").count()
+                rain_count = traffic_type_data.filter(col("WeatherType") == "Rain").count()
+                
+                # Extract values
+                no_weather_severity = no_weather_avg[0]['AvgSeverity'] if no_weather_avg and no_weather_avg[0]['AvgSeverity'] is not None else None
+                rain_severity = rain_avg[0]['AvgSeverity'] if rain_avg and rain_avg[0]['AvgSeverity'] is not None else None
+                
+                # Format output
+                no_weather_str = f"{no_weather_severity:.3f} (n={no_weather_count})" if no_weather_severity is not None else "No data"
+                rain_str = f"{rain_severity:.3f} (n={rain_count})" if rain_severity is not None else "No data"
+                
+                # Calculate difference
+                if no_weather_severity is not None and rain_severity is not None:
+                    difference = rain_severity - no_weather_severity
+                    diff_str = f"{difference:+.3f}"
+                    if difference > 0.1:
+                        diff_str += " ↑"
+                    elif difference < -0.1:
+                        diff_str += " ↓"
+                else:
+                    diff_str = "N/A"
+                
+                print(f"{traffic_type:<20} {no_weather_str:<15} {rain_str:<15} {diff_str:<15}")
+            
+            # Unpersist to free memory
+            filtered_data.unpersist()
                 
         except Exception as e:
             print(f"      Error analyzing {city}: {str(e)}")
@@ -247,135 +285,61 @@ def analyze_cities(traffic_events, weather_events):
         except:
             pass
 
-def analyze_rush_hour_impact(traffic_events, weather_events):
-    """Analyze weather impact during rush hours with optimized time processing"""
+def analyze_rain_severity_impact(traffic_events, weather_events):
+    """Analyze impact of different rain severities on traffic types"""
     print("\n" + "="*60)
-    print("RUSH HOUR ANALYSIS (OPTIMIZED)")
+    print("RAIN SEVERITY IMPACT ON TRAFFIC TYPES")
     print("="*60)
     
-    cities_timezones = [
-        ("Houston", "America/Chicago"),
-        ("Dallas", "America/Chicago"),
-        ("Los Angeles", "America/Los_Angeles"),
-        ("Chicago", "America/Chicago"),
-        ("New York", "America/New_York")
-    ]
-    
-    for city, timezone in cities_timezones:
-        print(f"\n{city} Rush Hour Analysis:")
-        print("-" * 40)
-        
-        try:
-            city_joined, _ = get_city_weather_analysis(city, traffic_events, weather_events)
-            
-            if city_joined.count() == 0:
-                print(f"      No data available for {city}")
-                continue
-            
-            # Convert to local time and add time components in one operation
-            city_joined = city_joined.withColumn(
-                "StartTimeLocal", 
-                from_utc_timestamp(to_timestamp(col("StartTime(UTC)")), timezone)
-            ).withColumn("hour", hour("StartTimeLocal")) \
-             .withColumn("minute", minute("StartTimeLocal")) \
-             .withColumn("day", dayofweek("StartTimeLocal"))
-            
-            # Filter for weekdays and rush hours in optimized single operation
-            city_rush_hour = city_joined.filter(
-                (col("day") >= 2) & (col("day") <= 6) &  # Weekdays
-                (
-                    # Morning rush: 7:30-9:30 AM
-                    ((col("hour") == 7) & (col("minute") >= 30)) |
-                    (col("hour") == 8) |
-                    ((col("hour") == 9) & (col("minute") <= 30)) |
-                    # Evening rush: 4:30-6:30 PM
-                    ((col("hour") == 16) & (col("minute") >= 30)) |
-                    (col("hour") == 17) |
-                    ((col("hour") == 18) & (col("minute") <= 30))
-                )
-            ).cache()  # Cache for multiple operations
-            
-            rush_hour_count = city_rush_hour.count()
-            print(f"      Rush hour events: {rush_hour_count:,}")
-            
-            if rush_hour_count > 0:
-                # Calculate average severity by weather type during rush hour
-                rush_hour_avg = city_rush_hour.coalesce(20).groupBy("WeatherType") \
-                    .agg(avg("Severity").alias("AvgSeverity")) \
-                    .orderBy("WeatherType")
-                
-                rush_hour_data = rush_hour_avg.collect()
-                if rush_hour_data:
-                    print("      Rush Hour Average Severity by Weather Type:")
-                    for row in rush_hour_data:
-                        weather_type = row['WeatherType']
-                        avg_severity = row['AvgSeverity']
-                        if avg_severity is not None:
-                            print(f"        {weather_type}: {avg_severity:.3f}")
-                        else:
-                            print(f"        {weather_type}: No data")
-                else:
-                    print(f"      No aggregated rush hour data available for {city}")
-            else:
-                print(f"      No rush hour data available for {city}")
-                
-            # Unpersist to free memory
-            city_rush_hour.unpersist()
-                
-        except Exception as e:
-            print(f"      Error analyzing rush hour for {city}: {str(e)}")
-
-def analyze_weather_severity_impact(traffic_events, weather_events):
-    """Analyze impact of different weather severities"""
-    print("\n" + "="*60)
-    print("WEATHER SEVERITY IMPACT ANALYSIS")
-    print("="*60)
-    
-    city = "Houston"
-    print(f"\n{city} - Rain Impact by Severity Level:")
-    print("-" * 45)
+    city = "Houston"  # Focus on one city with good data
+    print(f"\n{city} - Traffic Impact by Rain Severity:")
+    print("=" * 50)
     
     try:
-        city_joined, _ = get_city_weather_analysis(city, traffic_events, weather_events)
+        city_joined = get_city_weather_analysis(city, traffic_events, weather_events)
         
-        severity_levels = [
+        traffic_types = ["Accident", "Broken-Vehicle", "Congestion", "Construction", "Event", "Lane-Blocked", "Flow-Incident"]
+        rain_severities = [
             (1, "Light"),
             (2, "Moderate"), 
             (3, "Heavy")
         ]
         
-        for severity_num, severity_name in severity_levels:
-            filtered = city_joined.filter(
-                (col("WeatherType") == "Rain") &
-                (col("WeatherSeverityNumeric") == severity_num)
-            )
-            
-            avg_traffic_severity = filtered.agg(avg("Severity").alias("AvgSeverity")).collect()
-            
-            if avg_traffic_severity and avg_traffic_severity[0]['AvgSeverity'] is not None:
-                avg_val = avg_traffic_severity[0]['AvgSeverity']
-                count = filtered.count()
-                print(f"  {severity_name} Rain (Level {severity_num}): {avg_val:.3f} (n={count})")
-            else:
-                print(f"  {severity_name} Rain (Level {severity_num}): No data available")
-                
-        # Compare with no weather events
-        no_weather = city_joined.filter(col("WeatherType") == "No Weather Event")
-        no_weather_avg = no_weather.agg(avg("Severity").alias("AvgSeverity")).collect()
+        print(f"{'Traffic Type':<20} {'No Weather':<12} {'Light Rain':<12} {'Mod Rain':<12} {'Heavy Rain':<12}")
+        print("-" * 68)
         
-        if no_weather_avg and no_weather_avg[0]['AvgSeverity'] is not None:
-            avg_val = no_weather_avg[0]['AvgSeverity']
-            count = no_weather.count()
-            print(f"  No Weather Event: {avg_val:.3f} (n={count})")
-        else:
-            print("  No Weather Event: No data available")
+        for traffic_type in traffic_types:
+            traffic_type_data = city_joined.filter(col("Type") == traffic_type)
             
+            # No weather baseline
+            no_weather_avg = traffic_type_data \
+                .filter(col("WeatherType") == "No Weather Event") \
+                .agg(avg("Severity").alias("AvgSeverity")) \
+                .collect()
+            
+            no_weather_severity = no_weather_avg[0]['AvgSeverity'] if no_weather_avg and no_weather_avg[0]['AvgSeverity'] is not None else None
+            no_weather_str = f"{no_weather_severity:.3f}" if no_weather_severity is not None else "No data"
+            
+            # Rain severities
+            rain_results = []
+            for severity_num, severity_name in rain_severities:
+                rain_avg = traffic_type_data \
+                    .filter((col("WeatherType") == "Rain") & (col("WeatherSeverityNumeric") == severity_num)) \
+                    .agg(avg("Severity").alias("AvgSeverity")) \
+                    .collect()
+                
+                rain_severity = rain_avg[0]['AvgSeverity'] if rain_avg and rain_avg[0]['AvgSeverity'] is not None else None
+                rain_str = f"{rain_severity:.3f}" if rain_severity is not None else "No data"
+                rain_results.append(rain_str)
+            
+            print(f"{traffic_type:<20} {no_weather_str:<12} {rain_results[0]:<12} {rain_results[1]:<12} {rain_results[2]:<12}")
+                
     except Exception as e:
-        print(f"  Error analyzing weather severity impact: {str(e)}")
+        print(f"  Error analyzing rain severity impact: {str(e)}")
 
 def main():
     """Main analysis function"""
-    print("Traffic and Weather Impact Analysis")
+    print("Traffic Type and Weather Impact Analysis")
     print("=" * 60)
     print("Running with spark-submit configuration")
     
@@ -386,36 +350,27 @@ def main():
         # Load data
         traffic_events, weather_events = load_data(spark)
         
-        # Prepare weather data
+        # Prepare weather data (filter for Rain only)
         weather_events = prepare_weather_data(weather_events)
         
         # Basic analysis
-        analyze_basic_distributions(traffic_events)
+        analyze_traffic_types_distribution(traffic_events)
         
-        # City-specific analysis
-        analyze_cities(traffic_events, weather_events)
+        # Traffic type analysis by weather
+        analyze_traffic_types_by_weather(traffic_events, weather_events)
         
-        # Rush hour analysis
-        analyze_rush_hour_impact(traffic_events, weather_events)
-        
-        # Weather severity impact analysis
-        analyze_weather_severity_impact(traffic_events, weather_events)
+        # Rain severity impact analysis
+        analyze_rain_severity_impact(traffic_events, weather_events)
         
         print("\n" + "="*60)
-        print("ANALYSIS COMPLETE - HIGH PERFORMANCE EXECUTION")
+        print("ANALYSIS COMPLETE - TRAFFIC TYPES BY WEATHER CONDITIONS")
         print("="*60)
-        print("\nPerformance Summary:")
-        print("- Executed via spark-submit with custom configuration")
-        print("- Used broadcast joins for smaller datasets")
-        print("- Leveraged columnar storage with Snappy compression")
-        print("- Applied aggressive caching strategy")
-        print("- Utilized Adaptive Query Execution")
         print("\nKey Findings:")
-        print("- Rain generally has minimal impact on traffic severity")
-        print("- Rush hour patterns show weather effects may be more pronounced")
-        print("- Different cities show varying sensitivity to weather conditions")
-        print("- Heavy weather events may have different impacts than light events")
-        print("- Partitioning by state improved query locality and performance")
+        print("- Analyzed 7 traffic types: Accident, Broken-Vehicle, Congestion, Construction, Event, Lane-Blocked, Flow-Incident")
+        print("- Compared traffic severity under 'No Weather Event' vs 'Rain' conditions")
+        print("- Examined rain severity levels (Light, Moderate, Heavy) impact on traffic")
+        print("- Focused analysis on major metropolitan areas with sufficient data")
+        print("- Used optimized Spark operations with broadcast joins and caching")
         
     except Exception as e:
         print(f"\nError during analysis: {str(e)}")
