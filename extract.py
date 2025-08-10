@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""
+Extract a single tar.gz file - simple version
+"""
+
+import tarfile
+import os
+
+def extract_single_file(filename):
+    """Extract a single tar.gz file"""
+    
+    print(f"Extracting {filename}...")
+    
+    # Check if file exists
+    if not os.path.exists(filename):
+        print(f"Error: {filename} does not exist!")
+        return False
+    
+    # Create extraction directory
+    extract_dir = filename.replace('.tar.gz', '_extracted')
+    os.makedirs(extract_dir, exist_ok=True)
+    
+    try:
+        # Open and extract
+        with tarfile.open(filename, 'r:gz') as tar:
+            print(f"Archive contains {len(tar.getmembers())} files")
+            tar.extractall(path=extract_dir)
+            print(f"Successfully extracted to {extract_dir}")
+            
+            # Show what was extracted
+            print("Extracted files:")
+            for root, dirs, files in os.walk(extract_dir):
+                for file in files:
+                    print(f"  {os.path.join(root, file)}")
+            
+            return True
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+
+# Usage: modify the filename below
+if __name__ == "__main__":
+    # Change this to your actual file name
+    filename = "TrafficEvents_Aug16_Dec20_Publish.tar.gz"
+    extract_single_file(filename)
