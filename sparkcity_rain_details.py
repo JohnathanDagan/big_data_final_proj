@@ -353,7 +353,7 @@ def analyze_rain_severity_proportion(traffic_events, weather_events, city):
             (3, "Heavy")
         ]
 
-        # First table: Proportions including 'No Weather' events
+        # First table - proportions including 'No Weather' events
         print(f"\n{city} - Proportion of Weather Events per Traffic Type (Including 'No Weather'):")
         print("=" * 80)
         print(f"{'Traffic Type':<20} {'Light Rain %':<15} {'Mod Rain %':<15} {'Heavy Rain %':<15}")
@@ -375,7 +375,7 @@ def analyze_rain_severity_proportion(traffic_events, weather_events, city):
 
             print(f"{traffic_type:<20} {results[0]:<15} {results[1]:<15} {results[2]:<15}")
 
-        # Second table: Proportions excluding 'No Weather' events
+        # Second table - excluding 'No Weather' events
         print(f"\n{city} - Proportion of Rain Events per Traffic Type (Excluding 'No Weather'):")
         print("=" * 80)
         print(f"{'Traffic Type':<20} {'Light Rain %':<15} {'Mod Rain %':<15} {'Heavy Rain %':<15}")
@@ -393,7 +393,7 @@ def analyze_rain_severity_proportion(traffic_events, weather_events, city):
                 continue
 
             rain_results = []
-            for severity_num, _ in rain_severities[1:]:  # Start from index 1 to exclude 'No Weather'
+            for severity_num, _ in rain_severities[1:]:  
                 count_at_severity = traffic_type_data_rain_only.filter(col("WeatherSeverityNumeric") == severity_num).count()
                 proportion = (count_at_severity / total_rain_count) * 100 if total_rain_count > 0 else 0
                 rain_results.append(f"{proportion:.2f}%")
@@ -402,9 +402,6 @@ def analyze_rain_severity_proportion(traffic_events, weather_events, city):
 
     except Exception as e:
         print(f"  Error analyzing rain severity proportion: {str(e)}")
-
-# Example of how to call the new function
-# analyze_rain_severity_proportion(traffic_events_df, weather_events_df, "New York")
 
 def main():
     """Main analysis function"""
