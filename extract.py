@@ -42,5 +42,6 @@ def extract_single_file(filename):
 # Usage: modify the filename below
 if __name__ == "__main__":
     # Change this to your actual file name
-    filename = "TrafficEvents_Aug16_Dec20_Publish.tar.gz"
+    # filename = "TrafficEvents_Aug16_Dec20_Publish.tar.gz"
+    filename = "WeatherEvents_Aug16_Dec20_Publish.tar.gz"
     extract_single_file(filename)
