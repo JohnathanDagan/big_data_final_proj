@@ -15,7 +15,8 @@ mv mongodb-linux-x86_64-ubuntu2204-7.0.4/* .
 rm mongodb-linux-x86_64-ubuntu2204-7.0.4.tgz
 rmdir mongodb-linux-x86_64-ubuntu2204-7.0.4
 
-~/mongodb/bin/mongod --dbpath ~/mongodb-data --logpath ~/mongodb-logs/mongo.log --port 27017 --fork```
+~/mongodb/bin/mongod --dbpath ~/mongodb-data --logpath ~/mongodb-logs/mongo.log --port 27017 --fork
+```
 
 
 ## instructions in pipelineTotal.py, run in nyu dataproc with 
