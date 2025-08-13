@@ -1,4 +1,5 @@
-# big_data_final_proj
+# big_data_final_proj, steps
+
 
 ## dataset found at
 https://smoosavi.org/datasets/lstw
