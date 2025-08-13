@@ -1,7 +1,4 @@
-#this assumes the csvs have already been extracted into the filepaths found in WEATHER_LOCAL and TRAFFIC_LOCAL. download the .tar.gz files from the 
-#dataset website and run extract.py to extract. This file should be in a folder with the path found in the first half of WEATHER_LOCAL and TRAFFIC_LOCAL
-#edit extract.py to extract weather or traffic
-
+#this assumes the csvs have already been extracted into the filepaths found in WEATHER_LOCAL and TRAFFIC_LOCAL. 
 import subprocess
 from datetime import datetime
 from pyspark.sql import SparkSession

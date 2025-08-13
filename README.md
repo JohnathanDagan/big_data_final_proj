@@ -1,4 +1,7 @@
-# big_data_final_proj, steps
+# big_data_final_proj
+
+## steps
+Upload all scripts here into nyu dataproc into a folder called finalProj. download the .tar.gz files from the dataset website and run extract.py to extract. edit extract.py to extract weather or traffic
 
 
 ## dataset found at
